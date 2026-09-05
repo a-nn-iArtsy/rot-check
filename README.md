@@ -8,7 +8,7 @@ That is the whole category this covers. Not crashes — crashes are loud and you
 handle those. This is the routine that fires on time, exits clean, writes a timestamp,
 and has been doing nothing for nine days.
 
-**[Try it in your browser →](https://YOURNAME.github.io/rot-check/)** · no install, no
+**[Try it in your browser →](https://a-nn-iartsy.github.io/rot-check/)** · no install, no
 account, no upload. Paste a cron line, a Task Scheduler XML export, a systemd unit, an
 agent prompt, or the script your scheduler calls.
 
@@ -206,9 +206,11 @@ Plus `EXPECTED-OUTPUT.md` — what the checker should say about each fixture, so
 your copy — and `RUNTIME-VERIFICATION.md`, eight tests for the things static text can never
 see. **That last file is the part that actually proves anything.**
 
-**[Get the pack — $9](GUMROAD_LINK_HERE)**
+<!-- TODO: replace this block with the Gumroad link once the listing is live -->
+**The pack is $9.** The listing goes up shortly — watch this repo, or open an issue
+and I'll point you at it.
 
-If it finds nothing useful in your setup, email me and I'll refund it. No argument, no form.
+If it finds nothing useful in your setup, I refund it. No argument, no form.
 
 ---
 
