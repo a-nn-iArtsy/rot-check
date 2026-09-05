@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rot Check — find the scheduled agent that quietly stopped working</title>
+<style>
+:root{
+  --bg:#0A0A0A; --panel:#111111; --panel-2:#0D0D0D; --border:#1F1F1F; --border-hi:#2A2A2A;
+  --cyan:#2BE6DC; --pink:#F92382; --yellow:#FBE65D; --green:#08C864;
+  --ink:#C9CCCF; --ink-dim:#787E83; --ink-hi:#EDEFF0;
+  --d:'Space Grotesk',ui-sans-serif,system-ui,'Segoe UI',sans-serif;
+  --b:'Inter',ui-sans-serif,system-ui,'Segoe UI',Roboto,sans-serif;
+  --m:'JetBrains Mono',ui-monospace,'Cascadia Mono',Consolas,'DejaVu Sans Mono',monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink)}
+body{font-family:var(--b);font-weight:400;font-size:15px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.wrap{max-width:980px;margin:0 auto;padding:0 22px 90px}
+
+/* ---------- masthead ---------- */
+header{padding:44px 0 0}
+.eyebrow{font-family:var(--m);font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--cyan);margin:0 0 14px}
+h1{font-family:var(--d);font-weight:700;letter-spacing:-.035em;line-height:.98;
+  font-size:clamp(40px,7.4vw,76px);margin:0;color:var(--ink-hi)}
+h1 .hl{color:var(--cyan)}
+.dek{font-size:17px;line-height:1.5;max-width:62ch;margin:20px 0 0;color:var(--ink)}
+.dek b{color:var(--ink-hi);font-weight:500}
+
+/* ---------- the trace (the argument) ---------- */
+.trace{margin:30px 0 0;border:1px solid var(--border);background:var(--panel-2);
+  border-radius:3px;overflow:hidden}
+.trace svg{display:block;width:100%;height:118px}
+.tracebar{display:flex;justify-content:space-between;align-items:center;gap:16px;
+  padding:8px 14px;border-top:1px solid var(--border);font-family:var(--m);font-size:11px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim);flex-wrap:wrap}
+.tracebar .v{color:var(--ink-hi)}
+
+/* ---------- controls ---------- */
+.panel{border:1px solid var(--border);background:var(--panel);border-radius:3px}
+section{margin-top:44px}
+.lab{font-family:var(--m);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--ink-dim);margin:0 0 12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.lab::after{content:'';flex:1;height:1px;background:var(--border);min-width:20px}
+textarea{width:100%;min-height:210px;resize:vertical;background:var(--panel-2);
+  color:var(--ink-hi);border:1px solid var(--border);border-radius:3px;padding:16px;
+  font-family:var(--m);font-size:13px;line-height:1.65;outline:none}
+textarea:focus{border-color:var(--cyan)}
+textarea::placeholder{color:#4A5054}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
+button{font-family:var(--m);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  background:transparent;color:var(--ink);border:1px solid var(--border-hi);border-radius:3px;
+  padding:10px 15px;cursor:pointer}
+button:hover{border-color:var(--cyan);color:var(--ink-hi)}
+button.go{background:var(--cyan);color:#07110F;border-color:var(--cyan);font-weight:700;padding:11px 26px}
+button.go:hover{color:#000}
+.spacer{flex:1}
+.badge{font-family:var(--m);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--border-hi);border-radius:3px;padding:5px 10px;color:var(--ink-dim)}
+.badge b{color:var(--cyan);font-weight:500}
+
+/* ---------- groups + severity bars ---------- */
+.group{margin-top:26px;border:1px solid var(--border);background:var(--panel);border-radius:3px}
+.ghead{padding:16px 18px 0}
+.gtitle{font-family:var(--d);font-weight:700;font-size:21px;letter-spacing:-.02em;
+  color:var(--ink-hi);margin:0}
+.gsub{font-size:13px;color:var(--ink-dim);margin:4px 0 12px}
+.sev{display:flex;height:5px;gap:2px;border-radius:2px;overflow:hidden;margin:0 18px 16px}
+.sev i{display:block;flex:1}
+.sev i.f{background:var(--pink)} .sev i.u{background:var(--yellow)}
+.sev i.p{background:var(--green)} .sev i.n{background:#242424}
+
+/* ---------- result rows ---------- */
+.res{border-top:1px solid var(--border);padding:14px 18px;display:grid;
+  grid-template-columns:86px 1fr;gap:0 16px;align-items:start}
+.st{font-family:var(--m);font-size:11px;font-weight:700;letter-spacing:.12em;
+  padding:4px 0;text-align:left}
+.st.FAIL{color:var(--pink)} .st.PASS{color:var(--green)}
+.st.UNKNOWN{color:var(--yellow)} .st.NA{color:#5A6064}
+.res.FAIL{border-left:2px solid var(--pink)} .res.PASS{border-left:2px solid var(--green)}
+.res.UNKNOWN{border-left:2px solid var(--yellow)} .res.NA{border-left:2px solid #242424;opacity:.62}
+.rname{font-weight:500;color:var(--ink-hi);font-size:15px;margin:2px 0 0}
+.rnum{font-family:var(--m);color:var(--ink-dim);font-size:12px;margin-right:8px}
+.why{font-size:13.5px;color:var(--ink);margin:6px 0 0;max-width:74ch}
+.why code{font-family:var(--m);font-size:12px;background:#161616;border:1px solid var(--border);
+  border-radius:2px;padding:1px 5px;color:var(--cyan);word-break:break-word}
+.fix{font-size:13px;color:var(--ink-dim);margin:8px 0 0;max-width:74ch}
+.fix b{color:var(--ink);font-weight:500}
+.fix .tpl{font-family:var(--m);font-size:11.5px;color:var(--cyan)}
+
+/* ---------- prose + offer ---------- */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:20px}
+.card{border:1px solid var(--border);background:var(--panel);border-radius:3px;padding:18px}
+.card h3{font-family:var(--d);font-weight:700;font-size:16px;letter-spacing:-.01em;
+  color:var(--ink-hi);margin:0 0 8px}
+.card p{margin:0;font-size:13.5px;color:var(--ink-dim)}
+.card p+p{margin-top:9px}
+.cmd{display:block;font-family:var(--m);font-size:12px;line-height:1.55;color:var(--cyan);
+  background:#0d0d0d;border:1px solid var(--border);border-radius:2px;
+  padding:8px 10px;margin:9px 0 0;overflow-x:auto;white-space:pre;-webkit-user-select:all;user-select:all}
+.card .note{font-size:12px;color:var(--ink-dim);opacity:.78;margin-top:9px}
+.offer{border:1px solid var(--cyan);background:var(--panel);border-radius:3px;
+  padding:26px;margin-top:44px;display:grid;grid-template-columns:auto 1fr;gap:0 30px;align-items:start}
+.price{font-family:var(--d);font-weight:700;font-size:64px;line-height:.85;color:var(--cyan);
+  letter-spacing:-.04em}
+.price small{display:block;font-family:var(--m);font-size:10px;font-weight:400;letter-spacing:.2em;
+  color:var(--ink-dim);text-transform:uppercase;margin-top:10px}
+.offer h2{font-family:var(--d);font-weight:700;font-size:25px;letter-spacing:-.025em;
+  color:var(--ink-hi);margin:0 0 8px}
+.offer p{margin:0 0 14px;font-size:14px;color:var(--ink)}
+.tlist{list-style:none;margin:0;padding:0;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:7px 20px}
+.tlist li{font-family:var(--m);font-size:12px;color:var(--ink)}
+.tlist li s{color:var(--cyan);text-decoration:none;margin-right:7px}
+.tlist li em{display:block;font-style:normal;font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-dim);opacity:.72;margin-left:26px}
+.cta{margin:18px 0 0;font-family:var(--m);font-size:12px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-hi)}
+.cta b{color:var(--cyan)}
+footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--border);
+  font-size:12.5px;color:var(--ink-dim);max-width:76ch}
+@media(max-width:620px){
+  .offer{grid-template-columns:1fr;gap:18px}
+  .res{grid-template-columns:1fr;gap:2px}
+  .price{font-size:48px}
+}
+
+/* ---------- ONE bloom pass, applied last, to two things only ---------- */
+body.glow h1,
+body.glow .trace svg .lit{filter:url(#bloom)}
+body.glow .price{text-shadow:0 0 18px rgba(43,230,220,.34)}
+</style>
+</head>
+<body class="glow">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <filter id="bloom" x="-40%" y="-40%" width="180%" height="180%">
+    <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b"/>
+    <feColorMatrix in="b" type="matrix" result="c"
+      values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 .68 0"/>
+    <feMerge><feMergeNode in="c"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs></svg>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">Static lint for unattended agent routines</p>
+  <h1>Rot <span class="hl">Check</span></h1>
+  <p class="dek">Paste an agent prompt, a <code>SKILL.md</code>, a cron line or a Windows scheduled-task
+  definition. It reads the text against <b>14 ways an unattended agent dies quietly</b> — the ones that
+  leave no error, no crash and no gap you would notice. <b>Everything runs in your browser. Nothing is
+  uploaded.</b></p>
+
+  <div class="trace">
+    <svg id="ecg" viewBox="0 0 1000 118" preserveAspectRatio="none" aria-label="Routine liveness trace"></svg>
+    <div class="tracebar">
+      <span>Liveness trace</span>
+      <span>applicable <span class="v" id="mApp">—</span></span>
+      <span>fail <span class="v" id="mFail">—</span></span>
+      <span>unknown <span class="v" id="mUnk">—</span></span>
+      <span>pass <span class="v" id="mPass">—</span></span>
+      <span>not visible <span class="v" id="mNa">—</span></span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <p class="lab">Paste the routine</p>
+  <textarea id="src" spellcheck="false" placeholder="Paste a cron line, a Windows Task Scheduler XML export, a SKILL.md, an agent prompt, or the script your scheduler calls..."></textarea>
+  <div class="row">
+    <button class="go" id="run">Check</button>
+    <button data-ex="cron">Load cron example</button>
+    <button data-ex="xml">Load Task XML</button>
+    <button data-ex="prompt">Load SKILL.md</button>
+    <span class="spacer"></span>
+    <span class="badge" id="kind">detected: <b>—</b></span>
+    <button id="glowbtn" title="Disable every glow effect">Glow: on</button>
+  </div>
+</section>
+
+<section>
+  <p class="lab">First — get your routine out</p>
+  <div class="cols">
+    <div class="card"><h3>Windows Task Scheduler</h3>
+      <p>List what you actually have:</p>
+      <code class="cmd">Get-ScheduledTask | Where-Object {$_.TaskPath -notlike "\Microsoft*"} |
+  Select-Object TaskName,TaskPath</code>
+      <p>Then export one as XML and paste it above:</p>
+      <code class="cmd">schtasks /query /TN "\YourTaskName" /XML</code>
+      <p class="note">Copy the output straight from the console. Add <b>&gt; task.xml</b> to save it instead — the file is UTF-16, which is normal.</p></div>
+
+    <div class="card"><h3>cron — Linux, macOS, WSL</h3>
+      <p>Your own crontab:</p>
+      <code class="cmd">crontab -l</code>
+      <p>The system ones people forget:</p>
+      <code class="cmd">cat /etc/crontab
+ls -la /etc/cron.d/</code>
+      <p class="note">Paste one line or the whole file. A single cron line can only answer 2 of the 14 checks — the checker says so rather than inflating the score.</p></div>
+
+    <div class="card"><h3>systemd timers</h3>
+      <p>Find the timer:</p>
+      <code class="cmd">systemctl list-timers --all</code>
+      <p>Then dump the unit it drives:</p>
+      <code class="cmd">systemctl cat NAME.timer NAME.service</code>
+      <p class="note">Paste both units together — <b>Persistent=true</b> is the catch-up setting this checks for.</p></div>
+
+    <div class="card"><h3>launchd — macOS</h3>
+      <p>List your agents:</p>
+      <code class="cmd">launchctl list | grep -v com.apple</code>
+      <p>Then read the plist:</p>
+      <code class="cmd">cat ~/Library/LaunchAgents/LABEL.plist</code>
+      <p class="note">Substitute the label from the third column. System-wide jobs live in <b>/Library/LaunchDaemons/</b>.</p></div>
+
+    <div class="card"><h3>Agent prompts and scripts</h3>
+      <p>No command needed — open the file and copy it.</p>
+      <p class="note">A <b>SKILL.md</b>, a scheduled agent prompt, or the shell/PowerShell script your scheduler calls. These carry the most evidence, so they answer the most checks. If you have both the schedule and the script it runs, check them separately — they fail in different ways.</p></div>
+  </div>
+</section>
+
+<section id="out" aria-live="polite"></section>
+
+<section>
+  <p class="lab">What this is, exactly</p>
+  <div class="cols">
+    <div class="card"><h3>A lint, not a proof</h3><p>These are heuristics over text. Reliability is a
+      runtime property — whether the token is valid, whether the host woke, whether the file was
+      really written. A PASS means the guard language is present, never that the routine works.</p></div>
+    <div class="card"><h3>Absence is not evidence</h3><p>A short input cannot prove a dead-man alarm is
+      missing. So checks that could apply but found nothing report UNKNOWN, and checks the input type
+      structurally cannot carry are marked NOT VISIBLE and excluded from the trace.</p></div>
+    <div class="card"><h3>Overrule it</h3><p>Every row prints the text that made it fire. If the reason
+      is wrong, the result is wrong — that is the intended way to use it. The 14 named failures are the
+      product; the regexes are just how they are surfaced.</p></div>
+  </div>
+</section>
+
+<div class="offer">
+  <div class="price">$9<small>one payment</small></div>
+  <div>
+    <h2>The fixes, as drop-in files</h2>
+    <p>The checker above is free and always will be. The download is this page offline, plus the six
+    remediation templates the fixes are drawn from — each opening with the exact failure it prevents,
+    then working snippets for the platforms that failure actually occurs on. Coverage is listed per
+    template, because not every failure happens on every platform:</p>
+    <ul class="tlist">
+      <li><s>01</s>heartbeat-guard.md <em>bash + PowerShell</em></li>
+      <li><s>02</s>produce-or-alarm.md <em>design rule, no snippet</em></li>
+      <li><s>03</s>elapsed-time-gate.md <em>bash</em></li>
+      <li><s>04</s>deadman-alarm.md <em>bash</em></li>
+      <li><s>05</s>artifact-proof.md <em>bash + PowerShell</em></li>
+      <li><s>06</s>catch-up-safe-dispatch.md <em>PowerShell + Task XML</em></li>
+    </ul>
+    <p class="cta" style="margin-top:16px">Plus three broken fixtures with the expected checker output,
+    and a runtime verification checklist for the things static text can never see.</p>
+    <p class="cta"><b>Get the pack — $9</b> · download button on this page</p>
+  </div>
+</div>
+
+<footer>
+  The 14 failure modes are drawn from a seven-routine fleet that stopped for three days without a single
+  routine noticing, and from a zero-byte flag file that was accepted as proof of a completed business
+  send for six days. Neither was a crash. Both were routines that looked fine because the only thing
+  checking them was themselves. Rot Check v1 · no network calls, no telemetry, no accounts.
+</footer>
+</div>
+
+<script>
+"use strict";
+/* ============================ input typing ============================ */
+function detect(t){
+  const s=t.trim(); if(!s) return "empty";
+  if(/<\s*Task\b|<\s*Triggers\b|<\s*ExecutionTimeLimit\b|task\/2004\/02\/mit\/task/i.test(s)) return "taskxml";
+  const lines=s.split(/\r?\n/).filter(l=>l.trim()&&!/^\s*#/.test(l));
+  const cronish=lines.filter(l=>/^\s*(@(reboot|daily|hourly|weekly|monthly|midnight|annually|yearly)\s+\S|(\S+\s+){4,5}\S)/.test(l)
+    && /^\s*(@\w+|[\d*\/,\-]+\s+[\d*\/,\-]+\s+[\d*\/,\-]+\s+[\d*\/,\-a-z]+\s+[\d*\/,\-a-z]+)\s/i.test(l));
+  if(lines.length&&cronish.length/lines.length>=0.5) return "cron";
+  if(/^#!|\bfunction\s+\w+\s*\(|\bparam\s*\(|\$PSScriptRoot|Get-ChildItem|Write-Host|New-ScheduledTask|^\s*(set|export|local)\s+\w+=|\bdef\s+\w+\s*\(/mi.test(s)) return "script";
+  return "prompt";
+}
+const KIND={cron:"cron line",taskxml:"Windows Task XML",script:"script",prompt:"prompt / SKILL.md",empty:"nothing"};
+
+/* ============================ helpers ============================ */
+function hit(text,res){ for(const r of res){ const m=text.match(r); if(m) return m[0].replace(/\s+/g," ").trim().slice(0,120);} return null; }
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+/* ISO-8601 duration -> seconds. PT0S means NO limit in Task Scheduler. */
+function isoDur(d){
+  const m=/^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(String(d).trim().toUpperCase());
+  if(!m) return null;
+  const n=i=>m[i]?parseFloat(m[i]):0;
+  return n(1)*31536000+n(2)*2592000+n(3)*604800+n(4)*86400+n(5)*3600+n(6)*60+n(7);
+}
+
+/* ============================ the 14 checks ============================ */
+/* applies: which input types can structurally carry evidence for this check.
+   Anything else is NOT VISIBLE (excluded from the trace, never counted as a pass). */
+const C=[
+{n:1,g:0,name:"Weekday gate",applies:["prompt","script"],
+ defect:[/\b(if|unless|when)\b[^\n]{0,60}\b(today|day|weekday|dayofweek|day_of_week)\b[^\n]{0,50}\b(mon|tue|wed|thu|fri|sat|sun)/i,
+         /\b(only\s+run|runs?\s+only|skip\s+unless|do\s+not\s+run\s+unless)\b[^\n]{0,60}(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
+         /\b(monday|tuesday|wednesday|thursday|friday)\b[^\n]{0,30}\b(else|otherwise)?\s*(exit|return|stop|skip)\b/i],
+ guard:[/elapsed[\s_-]*(time|hours?|days?|window)/i,/\b(hours?|days?)\s+since\b/i,/\bm ?time\b|\bmtime\b/i],
+ fail:"cadence is decided by a weekday name. Under catch-up dispatch a missed Monday fires on Tuesday, the gate closes, and the routine becomes structurally unable to run while reporting success every time.",
+ pass:"cadence is measured as elapsed time, which survives a deferred run.",
+ unk:"no weekday test and no elapsed-time gate found. If cadence is enforced anywhere, confirm it is not a day name.",
+ fix:"Gate on hours since the newest real output, set slightly below the nominal cadence.",tpl:"elapsed-time-gate.md"},
+
+{n:2,g:0,name:"lastRunAt gate",applies:["prompt","script"],
+ defect:[/\b(lastrunat|last_run_at|lastruntime|last_run|lastexecuted|last_dispatch)\b/i],
+ negtok:/\b(lastrunat|last_run_at|lastruntime|last_run|lastexecuted|last_dispatch)\b/,
+ guard:[/\b(newest|latest|last)\s+(artifact|output|file|deliverable)\b/i,/\bmtime\b/i,/\bmodified\s+time\b/i],
+ fail:"cadence reads a field the scheduler writes. That proves the run was <i>dispatched</i>, not that it did any work — a run that started and died still stamps it.",
+ pass:"cadence is measured from a produced artifact, so a dispatched-but-dead run correctly reads as no work.",
+ unk:"no scheduler timestamp and no artifact-mtime check found.",
+ fix:"Measure elapsed time from the mtime of the newest real output, never from the scheduler's own field.",tpl:"elapsed-time-gate.md"},
+
+{n:3,g:0,name:"Heartbeat written last",applies:["prompt","script"],
+ defect:[/\b(at\s+the\s+end|finally|once\s+(complete|finished|done)|after\s+(the\s+)?work|on\s+success)\b[^\n]{0,60}\b(heartbeat|liveness|_?heartbeat\.md)\b/i,
+         /\bheartbeat\b[^\n]{0,40}\b(at\s+the\s+end|last|after\s+everything|on\s+completion)\b/i],
+ guard:[/\b(heartbeat|liveness)\b[^\n]{0,60}\b(first|before\s+(reading|loading|anything|any)|at\s+the\s+very\s+start)\b/i,
+        /\b(first|before\s+anything\s+else)\b[^\n]{0,40}\b(heartbeat|liveness)\b/i],
+ fail:"the heartbeat is written after the work. A run that dies mid-work leaves no trace it ever fired, so a mid-run death is indistinguishable from a run that never dispatched.",
+ pass:"the heartbeat is written before any other work, so even a mid-run death leaves proof of dispatch.",
+ unk:"no heartbeat ordering stated. If a heartbeat exists, confirm it is written before anything is read.",
+ fix:"Append the heartbeat line first — before config, before inputs — then rewrite its outcome field at the end.",tpl:"heartbeat-guard.md"},
+
+{n:4,g:0,name:"Unguarded heartbeat append",applies:["prompt","script"],
+ defect:[/(>>|Add-Content\b)\s*[^\n]{0,50}(heartbeat|liveness|runlog|run_log)/i,
+         /(heartbeat|liveness)[^\n]{0,40}(>>|Add-Content\b)/i],
+ guard:[/(trailing|final)\s+newline/i,/tail\s+-c\s*1/i,/newline\s+guard/i,/\\n\$/,/ends?\s+(in|with)\s+a\s+newline/i],
+ fail:"a heartbeat append with no trailing-newline guard. Two runs fuse onto one physical line, the file keeps growing so nothing looks broken, and the line count silently stops matching the run count.",
+ pass:"the append checks for a trailing newline first, so runs stay one-per-line.",
+ unk:"no heartbeat append found to inspect.",
+ fix:"Test the last byte for a newline and add one before every append.",tpl:"heartbeat-guard.md"},
+
+{n:5,g:1,name:"No produce-or-alarm",applies:["prompt","script"],
+ defect:[/\b(output|print|emit|write)\s+["`']?SKIPPED["`']?\s*(and\s+)?(then\s+)?(stop|exit|return)/i,
+         /\b(if|when|unless)[^\n]{0,60}\b(gate|gated|not\s+due|too\s+soon)\b[^\n]{0,40}\b(exit|return|stop)\b(?![^\n]{0,60}(write|append|heartbeat|top\s*line|alarm))/i],
+ guard:[/\bevery\s+run\s+(writes|produces|emits)\b/i,/\b(produce[\s-]?or[\s-]?alarm|alarm\s+branch)\b/i,/\bTOP\s*LINE\b/i,/\bgated\s+(stop|run)\s+is\s+still\s+a\s+run\b/i],
+ fail:"a gated run can exit without writing anything. Zero bytes written is byte-identical to a routine that is dead, and the outage window can never be reconstructed afterwards.",
+ pass:"every run is required to write output or raise an alarm, so a gated stop is still visible.",
+ unk:"no explicit rule that a gated or failed run must still write something.",
+ fix:"Every run writes a heartbeat line and a three-line top line — including the runs that do nothing.",tpl:"produce-or-alarm.md"},
+
+{n:6,g:1,name:"Self-report as proof",applies:["prompt","script"],
+ defect:[/\btouch\s+[^\n]{0,40}\.(flag|done|sent|ok|stamp)\b/i,/\b(create|write|drop)\s+(a\s+)?(flag|done|sent|marker)\s*(file)?\b/i,
+         /\b(status|state)\s*[:=]\s*["']?(done|sent|complete|ok|success)["']?/i,/\bmark(ed)?\s+(it\s+)?(as\s+)?(done|sent|complete)\b/i],
+ guard:[/\b(external|counterpart(y|ies)|third[\s-]party)\s+(record|artifact|evidence|proof)/i,
+        /\b(never|not)\s+a\s+(flag|checkbox|self[\s-]report)/i,/\b(message|order|transaction|listing)\s+(id|url|record)\b/i,/\binbound\s+repl(y|ies)\b/i],
+ fail:"a flag file, checkbox or status line is treated as evidence. The thing being guarded against is the routine being wrong about itself, so its own report is the weakest evidence available.",
+ pass:"proof is required to be an external record, not the routine's own claim.",
+ unk:"no evidence standard stated either way.",
+ fix:"Accept only an external record — a live URL, an order, a transaction, an inbound reply.",tpl:"artifact-proof.md"},
+
+{n:7,g:1,name:"No byte-size or re-read check",applies:["prompt","script"],
+ defect:[],
+ guard:[/\bbyte\s*(size|count)\b|\bwc\s+-c\b|\.Length\b|\bfilesize\b/i,/\bre-?read\b/i,/\b0-?byte\b|\bnon-?empty\b|\[\s*-s\s/,/\bTest-Path\b[^\n]{0,60}\bLength\b/i],
+ fail:"",
+ pass:"the output is re-read from disk and its size checked, so a stub or an empty write cannot pass as success.",
+ unk:"nothing re-reads the output or checks its size. Write buffering, a full disk, a permission failure and a path typo all produce a confident success and no usable file.",
+ fix:"After writing, re-read the file and require a minimum plausible byte size — not merely non-zero.",tpl:"artifact-proof.md"},
+
+{n:8,g:2,name:"Headless auth expiry unhandled",applies:["prompt","script","cron","taskxml"],
+ defect:[],
+ guard:[/\b(auth|token|credential|oauth|session)\b[^\n]{0,60}\b(expir|refresh|renew|valid|check|guard)/i,
+        /\b(setup-token|long[\s-]lived\s+token|service\s+account)\b/i,/\bexit\s+code\b[^\n]{0,40}\bauth/i],
+ need:[/\bclaude\s+-p\b|\bclaude\s+exec\b|--headless\b|\bcodex\s+exec\b|\bgh\s+auth\b|\bapi[\s_-]?key\b|\bheadless\b/i],
+ fail:"",
+ pass:"an auth or token validity check is present before the work runs.",
+ unk:"a headless invocation with no auth-validity check. An expired token kills every scheduled routine at once, and each one fails the same silent way on the same morning.",
+ na2:"no headless or authenticated invocation found in this input, so token expiry is not visible here.",
+ fix:"Check token validity first and raise an alarm on auth failure instead of exiting quietly.",tpl:"deadman-alarm.md"},
+
+{n:9,g:0,name:"No dead-man alarm",applies:["prompt","script"],
+ defect:[],
+ guard:[/\bdead[\s-]?man\b/i,/\bconsecutive\s+(missed|failed|silent)\b/i,/\bwatcher\b|\bwatchdog\b/i,
+        /\b(alarm|alert|notify|push)\b[^\n]{0,60}\b(missed|silent|no\s+run|not\s+run|stopped)\b/i,/healthchecks\.io|cronitor|deadmanssnitch/i],
+ fail:"",
+ pass:"something outside this routine watches for its absence.",
+ unk:"nothing here notices N consecutive missed runs. A routine cannot report its own absence — if the process never starts, none of its internal checks run either.",
+ fix:"Run one separate watcher, more often than anything it watches, that alarms on silence.",tpl:"deadman-alarm.md"},
+
+{n:10,g:0,name:"Host-asleep dispatch",applies:["cron","taskxml"],
+ xml:true,
+ guard:[/anacron|@reboot|StartWhenAvailable\s*>\s*true/i],
+ fail:"",pass:"",unk:"",
+ fix:"Set StartWhenAvailable, and an execution time limit longer than the longest realistic sleep window.",tpl:"catch-up-safe-dispatch.md"},
+
+{n:11,g:2,name:"Date-gated deadline",applies:["prompt","script"],
+ defect:[/\b(deadline|kill\s*(gate|date)|expires?|by)\b[^\n]{0,40}\b(20\d\d[-\/]\d\d?[-\/]\d\d?)\b/i,
+         /\bif\s+(the\s+)?(date|today)\b[^\n]{0,40}(>|past|after|beyond)\b/i],
+ guard:[/\b(on\s+delivery|when\s+delivered|upon\s+(receipt|delivery)|once\s+\w+\s+is\s+(shipped|delivered|received))\b/i,
+        /\bdeadline\b[^\n]{0,60}\b(evidence|artifact|record|proof)\b/i],
+ fail:"a deadline that lapses on a calendar date rather than on delivery. If nothing was produced, silence gets scored as a decision and the lapse looks like a result.",
+ pass:"the deadline resolves against delivered evidence, not against the calendar alone.",
+ unk:"no dated deadline found.",
+ fix:"Tie the deadline to a produced artifact; a lapsed date with no output is an alarm, not an outcome.",tpl:"produce-or-alarm.md"},
+
+{n:12,g:1,name:"Output written where nobody reads",applies:["prompt","script"],
+ defect:[/\b(log|append)(?!-only)\b[^\n]{0,40}\b(and\s+)?(that\s+is\s+it|that's\s+it|nothing\s+else)\b/i,
+         /\bwrite\s+(the\s+)?(result|report|output)\s+to\s+[^\n]{0,40}\.log\b/i],
+ guard:[/\b(mirror|copy|publish)\b[^\n]{0,60}\b(desktop|dashboard|same\s+(path|place|name)|inbox|phone|push)\b/i,
+        /\b(always\s+the\s+same|declared\s+mirror|canonical\s+path)\b/i],
+ fail:"output lands somewhere nobody opens. Delivery works once; re-delivery never happens and the surface goes stale without anyone noticing.",
+ pass:"output is mirrored to a fixed, always-current place, so nothing has to be remembered or found.",
+ unk:"no delivery surface named. Confirm the output lands somewhere that is actually opened.",
+ fix:"Mirror the newest output to one fixed path with one fixed name, overwritten every run.",tpl:"produce-or-alarm.md"},
+
+{n:13,g:2,name:"Threshold not frozen before going live",applies:["prompt","script"],
+ defect:[/\b(decide|set|choose|determine|evaluate)\b[^\n]{0,50}\b(threshold|success\s+(bar|criteria)|what\s+counts)\b[^\n]{0,50}\b(after|later|once\s+(we|it)\s+(see|have)|based\s+on\s+results)/i],
+ guard:[/\bfrozen\b[^\n]{0,60}\b(before|threshold|deadline)\b/i,/\bnever\s+moved\b/i,
+        /\b(success|failure)\b[^\n]{0,30}[:=][^\n]{0,40}\b(at\s+least|>=|≥|\d)/i,/\bpre-?registered\b/i],
+ fail:"the success bar is decided after the results are in. A test whose threshold moves is not a test.",
+ pass:"a numeric threshold is fixed in advance.",
+ unk:"no numeric success or failure bar found. If this routine is testing something, freeze the bar before it goes live.",
+ fix:"Write the numeric success bar, failure bar and deadline before anything is live, and never move them.",tpl:"produce-or-alarm.md"},
+
+{n:14,g:2,name:"No single shippable unit",applies:["prompt"],
+ defect:[/\b(produce|write|generate|deliver)\s+(a\s+)?(report|analysis|audit|summary|assessment|shortlist|scorecard|dossier|roadmap|brief)\b/i],
+ guard:[/\b(artifact|deliverable|file|url)\b[^\n]{0,60}\b(on\s+disk|byte|path|shippable|stranger)\b/i,
+        /\bone\s+(shippable|complete)\s+(unit|artifact|thing)\b/i],
+ fail:"the declared output is a report about work rather than the work. Routines that produce instruments instead of outputs accumulate documents and never a deliverable.",
+ pass:"the run is required to end with a concrete artifact on disk.",
+ unk:"no declared output artifact. Name the one file this run must leave behind.",
+ fix:"End every run with one named artifact at a fixed path, verified by re-reading it.",tpl:"artifact-proof.md"}
+];
+const GROUPS=[
+ {t:"Liveness",s:"Can you tell a dead routine from a quiet one?"},
+ {t:"Evidence",s:"Is the proof of work real, or the routine's own opinion?"},
+ {t:"Continuity",s:"What happens across days, tokens and deadlines?"}
+];
+
+/* ---- check 10 needs real parsing, not keywords ---- */
+function check10(txt,kind){
+  if(kind==="taskxml"){
+    const swa=/<StartWhenAvailable>\s*true\s*<\/StartWhenAvailable>/i.test(txt);
+    const em=/<ExecutionTimeLimit>\s*([^<\s]+)\s*<\/ExecutionTimeLimit>/i.exec(txt);
+    const secs=em?isoDur(em[1]):null;
+    const noLimit=em&&secs===0;                     // PT0S means "no limit", not zero
+    /* secondary dispatch killers on the same setting block */
+    const extra=[];
+    if(/<DisallowStartIfOnBatteries>\s*true\s*<\/DisallowStartIfOnBatteries>/i.test(txt))
+      extra.push("<code>DisallowStartIfOnBatteries</code> is true — on a laptop that woke on battery the run is skipped with no error");
+    if(/<MultipleInstancesPolicy>\s*(Parallel|StopExisting)\s*</i.test(txt))
+      extra.push("<code>MultipleInstancesPolicy</code> lets released catch-ups trample each other after an outage");
+    const tail=extra.length?" Also: "+extra.join("; ")+".":"";
+    if(!swa) return{st:"FAIL",why:"<code>StartWhenAvailable</code> is not true. A run missed while the host is asleep is dropped outright — nothing fires, nothing errors, and the only trace is a gap."+tail};
+    if(em&&!noLimit&&secs!==null&&secs<3600)
+      return{st:"FAIL",why:"<code>StartWhenAvailable</code> is set, but <code>ExecutionTimeLimit</code> is <code>"+esc(em[1])+"</code> ("+Math.round(secs/60)+" min). A deferred run is killed on arrival if the limit is shorter than the wake window — and the history still shows an ordinary completion."+tail};
+    if(extra.length)
+      return{st:"FAIL",why:"<code>StartWhenAvailable</code> and the time limit are fine, but "+extra.join("; ")+"."};
+    if(em&&!noLimit&&secs!==null&&secs<14400)
+      return{st:"UNKNOWN",why:"<code>StartWhenAvailable</code> is set and <code>ExecutionTimeLimit</code> is <code>"+esc(em[1])+"</code> ("+Math.round(secs/3600*10)/10+" h). That is only safe if the host never sleeps longer than that."};
+    return{st:"PASS",why:"<code>StartWhenAvailable</code> is true"+(em?" and <code>ExecutionTimeLimit</code> is <code>"+esc(em[1])+"</code>"+(noLimit?" (PT0S = no limit)":""):"")+", so a deferred run survives arrival."};
+  }
+  if(/anacron|@reboot/i.test(txt))
+    return{st:"PASS",why:"a catch-up mechanism (<code>anacron</code> or <code>@reboot</code>) is present, so a window missed while asleep is not simply lost."};
+  return{st:"FAIL",why:"plain <code>cron</code> drops jobs missed while the host was asleep — no run, no error, no record. On a machine that sleeps you need anacron semantics or a <code>@reboot</code> catch-up."};
+}
+
+/* --- prohibition guard ------------------------------------------------
+   A routine that says "never read lastRunAt" contains the token but not the
+   defect. Only treat it as a defect if at least one occurrence is a live use:
+   every occurrence must sit inside a prohibition before we clear it.       */
+const NEGCUE=/\b(never|not|no|don'?t|do\s+not|avoid|avoids|avoiding|rather\s+than|instead\s+of|without|forbidden|must\s+not|may\s+not|cannot|can'?t|refuse[sd]?\s+to|stop\s+(?:using|reading))\b[^.;!?]{0,70}$/i;
+function allNegated(txt,tokRe){
+  const re=new RegExp(tokRe.source,"gi"); let m,seen=false;
+  while((m=re.exec(txt))!==null){
+    if(m[0].length===0){re.lastIndex++;continue;}
+    if(!NEGCUE.test(txt.slice(Math.max(0,m.index-70),m.index))) return false;
+    seen=true;
+  }
+  return seen;
+}
+
+/* ============================ engine ============================ */
+function evaluate(txt,kind){
+  return C.map(c=>{
+    if(!c.applies.includes(kind))
+      return{c,st:"NA",why:"a "+KIND[kind]+" cannot carry evidence for this check — not scored, and excluded from the trace."};
+    if(c.n===10) {const r=check10(txt,kind); return{c,st:r.st,why:r.why};}
+    if(c.need&&!hit(txt,c.need)) return{c,st:"NA",why:c.na2};
+
+    let d=c.defect&&c.defect.length?hit(txt,c.defect):null;
+    if(d&&c.negtok&&allNegated(txt,c.negtok)) d=null;
+    const g=c.guard&&c.guard.length?hit(txt,c.guard):null;
+
+    if(d&&g) return{c,st:"FAIL",why:"guard language is present (<code>"+esc(g)+"</code>) but so is the defect itself (<code>"+esc(d)+"</code>). The stated rule is not what the routine does — a description of the fix is not the fix."};
+    if(d)    return{c,st:"FAIL",why:"matched <code>"+esc(d)+"</code> — "+c.fail};
+    if(g)    return{c,st:"PASS",why:"matched <code>"+esc(g)+"</code> — "+c.pass+" This is a text match, not a verification that the code does it."};
+    return{c,st:"UNKNOWN",why:c.unk};
+  });
+}
+
+/* ---- the trace: a beat per applicable check, flat on failure ---- */
+function trace(rows){
+  const app=rows.filter(r=>r.st!=="NA");
+  const S=document.getElementById("ecg"), W=1000,H=118,mid=H/2;
+  let g='<line x1="0" y1="'+mid+'" x2="'+W+'" y2="'+mid+'" stroke="#1B1B1B" stroke-width="1"/>';
+  if(!app.length){
+    g+='<line x1="0" y1="'+mid+'" x2="'+W+'" y2="'+mid+'" stroke="#3A3A3A" stroke-width="2" stroke-dasharray="7 7"/>'+
+       '<text x="'+(W/2)+'" y="'+(mid-14)+'" fill="#5A6064" font-size="13" font-family="monospace" text-anchor="middle">no applicable checks in this input</text>';
+    S.innerHTML=g; return;
+  }
+  const seg=W/app.length; let d="M 0 "+mid, col="#08C864", fails=0;
+  app.forEach((r,i)=>{
+    const x=i*seg, q=seg/6;
+    if(r.st==="FAIL"){ fails++; d+=" L "+(x+seg)+" "+mid; }
+    else if(r.st==="PASS"){
+      d+=" L "+(x+q*1.6)+" "+mid+" L "+(x+q*2.1)+" "+(mid+11)+" L "+(x+q*2.8)+" "+(mid-40)+
+         " L "+(x+q*3.5)+" "+(mid+20)+" L "+(x+q*4.1)+" "+mid+" L "+(x+seg)+" "+mid;
+    } else { d+=" L "+(x+q*2.4)+" "+mid+" L "+(x+q*3)+" "+(mid-13)+" L "+(x+q*3.6)+" "+mid+" L "+(x+seg)+" "+mid; }
+  });
+  const ratio=fails/app.length;
+  col = ratio>=0.5 ? "#F92382" : ratio>0 ? "#FBE65D" : "#08C864";
+  /* tick marks give the trace structure even with every glow stripped */
+  app.forEach((r,i)=>{ const x=i*seg;
+    g+='<line x1="'+x+'" y1="'+(H-13)+'" x2="'+x+'" y2="'+H+'" stroke="#242424" stroke-width="1"/>'; });
+  g+='<path class="lit" d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"/>';
+  /* the label needs enough applicable checks to mean anything — a 1-of-1 fail is not a flatline */
+  if(ratio>=0.5&&app.length>=4) g+='<text x="14" y="24" fill="'+col+'" font-size="11" font-family="monospace" letter-spacing="2">FLATLINE</text>';
+  else if(app.length<4) g+='<text x="14" y="24" fill="#5A6064" font-size="11" font-family="monospace" letter-spacing="2">'+app.length+' CHECK'+(app.length===1?"":"S")+' VISIBLE IN THIS INPUT</text>';
+  S.innerHTML=g;
+}
+
+function render(){
+  const txt=document.getElementById("src").value;
+  const kind=detect(txt);
+  document.getElementById("kind").innerHTML='detected: <b>'+KIND[kind]+'</b>';
+  const out=document.getElementById("out");
+  if(kind==="empty"){ out.innerHTML=""; trace([]);
+    ["mApp","mFail","mUnk","mPass","mNa"].forEach(i=>document.getElementById(i).textContent="—"); return; }
+
+  const rows=evaluate(txt,kind);
+  const n=s=>rows.filter(r=>r.st===s).length;
+  document.getElementById("mApp").textContent=rows.length-n("NA");
+  document.getElementById("mFail").textContent=n("FAIL");
+  document.getElementById("mUnk").textContent=n("UNKNOWN");
+  document.getElementById("mPass").textContent=n("PASS");
+  document.getElementById("mNa").textContent=n("NA");
+  trace(rows);
+
+  let h="";
+  GROUPS.forEach((G,gi)=>{
+    const rs=rows.filter(r=>r.c.g===gi); if(!rs.length) return;
+    h+='<div class="group"><div class="ghead"><h2 class="gtitle">'+G.t+'</h2><p class="gsub">'+G.s+'</p></div><div class="sev">';
+    rs.forEach(r=>{h+='<i class="'+({FAIL:"f",UNKNOWN:"u",PASS:"p",NA:"n"}[r.st])+'"></i>';});
+    h+='</div>';
+    rs.forEach(r=>{
+      h+='<div class="res '+r.st+'"><div class="st '+r.st+'">'+(r.st==="NA"?"NOT VISIBLE":r.st)+'</div><div>'+
+         '<p class="rname"><span class="rnum">'+String(r.c.n).padStart(2,"0")+'</span>'+r.c.name+'</p>'+
+         '<p class="why">'+r.why+'</p>';
+      if(r.st==="FAIL"||r.st==="UNKNOWN")
+        h+='<p class="fix"><b>Fix:</b> '+r.c.fix+' <span class="tpl">'+r.c.tpl+'</span></p>';
+      h+='</div></div>';
+    });
+    h+='</div>';
+  });
+  out.innerHTML='<p class="lab">Result · '+rows.length+' checks · '+(rows.length-n("NA"))+' applicable to a '+KIND[kind]+'</p>'+h;
+}
+
+/* ============================ examples ============================ */
+const EX={
+cron:`# nightly scout - runs headless, nobody watches it
+0 7 * * 1-5 /usr/bin/claude -p "$(cat ~/prompts/scout.md)" >> ~/logs/scout.log 2>&1
+30 7 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1`,
+
+xml:`<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-08-01T07:00:00</StartBoundary>
+      <ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Settings>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT30M</ExecutionTimeLimit>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>
+  </Settings>
+  <Actions>
+    <Exec><Command>pwsh.exe</Command><Arguments>-File C:\\tasks\\scout.ps1</Arguments></Exec>
+  </Actions>
+</Task>`,
+
+prompt:`# SCOUT-01 - daily market scout
+
+You are SCOUT-01. You run once a day and report what changed.
+
+## Cadence
+Only run on Monday, Wednesday and Friday. If today is not one of those, exit.
+Check lastRunAt in state.json; if it is today, exit.
+
+## Steps
+1. Read the watchlist and gather signals.
+2. Produce a report summarising what changed.
+3. Write the report to runs/<DATE>.md.
+4. At the end of the run, append a line to _heartbeat.md recording that you fired.
+5. Mark status: done in state.json so tomorrow's run knows this one completed.
+
+## Deadline
+If the date is past 2026-09-30, stop running and report the experiment closed.`
+};
+
+/* ============================ wiring ============================ */
+document.getElementById("run").addEventListener("click",render);
+document.getElementById("src").addEventListener("input",()=>{
+  document.getElementById("kind").innerHTML='detected: <b>'+KIND[detect(document.getElementById("src").value)]+'</b>';
+});
+document.querySelectorAll("[data-ex]").forEach(b=>b.addEventListener("click",()=>{
+  document.getElementById("src").value=EX[b.dataset.ex]; render();
+  document.getElementById("out").scrollIntoView({behavior:"smooth",block:"start"});
+}));
+const gb=document.getElementById("glowbtn");
+gb.addEventListener("click",()=>{
+  document.body.classList.toggle("glow");
+  gb.textContent="Glow: "+(document.body.classList.contains("glow")?"on":"off");
+});
+trace([]);
+</script>
+</body>
+</html>
