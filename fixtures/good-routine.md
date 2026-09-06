@@ -40,3 +40,6 @@ with no output is an alarm, not an outcome.
 
 ## Output
 End every run with one named artifact at a fixed path, verified by re-reading it.
+
+*Changed 2026-08-07: the previous "Tuesday only, else stop" gate was removed, because
+a missed Tuesday under catch-up dispatch cost a whole week.*

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Rot Check — find the scheduled agent that quietly stopped working</title>
+<title>Rot Check — 14 ways an unattended routine dies quietly</title>
 <style>
 :root{
   --bg:#0A0A0A; --panel:#111111; --panel-2:#0D0D0D; --border:#1F1F1F; --border-hi:#2A2A2A;
@@ -148,18 +148,19 @@ body.glow .price{text-shadow:0 0 18px rgba(43,230,220,.34)}
   <p class="eyebrow">Static lint for unattended agent routines</p>
   <h1>Rot <span class="hl">Check</span></h1>
   <p class="dek">Paste an agent prompt, a <code>SKILL.md</code>, a cron line or a Windows scheduled-task
-  definition. It reads the text against <b>14 ways an unattended agent dies quietly</b> — the ones that
-  leave no error, no crash and no gap you would notice. <b>Everything runs in your browser. Nothing is
-  uploaded.</b></p>
+  definition. It highlights wording related to <b>14 ways an unattended agent dies quietly</b> — the ones that
+  leave no error, no crash and no gap you would notice. <b>It reports signals, not a verdict:</b> it
+  cannot tell a live defect from a quoted example, and it never checks whether anything actually ran.
+  <b>Everything runs in your browser. Nothing is uploaded.</b></p>
 
   <div class="trace">
     <svg id="ecg" viewBox="0 0 1000 118" preserveAspectRatio="none" aria-label="Routine liveness trace"></svg>
     <div class="tracebar">
       <span>Liveness trace</span>
-      <span>applicable <span class="v" id="mApp">—</span></span>
-      <span>fail <span class="v" id="mFail">—</span></span>
-      <span>unknown <span class="v" id="mUnk">—</span></span>
-      <span>pass <span class="v" id="mPass">—</span></span>
+      <span>signals read <span class="v" id="mApp">—</span></span>
+      <span>defect <span class="v" id="mFail">—</span></span>
+      <span>none <span class="v" id="mUnk">—</span></span>
+      <span>guard <span class="v" id="mPass">—</span></span>
       <span>not visible <span class="v" id="mNa">—</span></span>
     </div>
   </div>
@@ -223,26 +224,28 @@ ls -la /etc/cron.d/</code>
 <section>
   <p class="lab">What this is, exactly</p>
   <div class="cols">
-    <div class="card"><h3>A lint, not a proof</h3><p>These are heuristics over text. Reliability is a
-      runtime property — whether the token is valid, whether the host woke, whether the file was
-      really written. A PASS means the guard language is present, never that the routine works.</p></div>
+    <div class="card"><h3>Signals, not verdicts</h3><p>This reports <b>which phrasings it found</b>, not
+      whether your routine works. Reliability is a runtime property — whether the token was valid,
+      whether the host woke, whether the file was really written. None of that is visible in text.
+      <b>A guard signal is a phrase match. It is not a pass.</b></p></div>
     <div class="card"><h3>Absence is not evidence</h3><p>A short input cannot prove a dead-man alarm is
       missing. So checks that could apply but found nothing report UNKNOWN, and checks the input type
       structurally cannot carry are marked NOT VISIBLE and excluded from the trace.</p></div>
-    <div class="card"><h3>Overrule it</h3><p>Every row prints the text that made it fire. If the reason
-      is wrong, the result is wrong — that is the intended way to use it. The 14 named failures are the
-      product; the regexes are just how they are surfaced.</p></div>
+    <div class="card"><h3>Mention vs use is unsolved</h3><p>The tool matches wording across the whole
+      document. It <b>cannot</b> distinguish a live instruction from a quoted counterexample or a rule
+      forbidding it. So a well-written routine that names the failure it guards against <b>will</b>
+      light a defect signal. That is a known limit, not a finding about your config. The 14 named
+      failure modes are the point; the regexes are only how they get surfaced.</p></div>
   </div>
 </section>
 
 <div class="offer">
-  <div class="price">$9<small>one payment</small></div>
+  <div class="price">MIT<small>free, always</small></div>
   <div>
-    <h2>The fixes, as drop-in files</h2>
-    <p>The checker above is free and always will be. The download is this page offline, plus the six
-    remediation templates the fixes are drawn from — each opening with the exact failure it prevents,
-    then working snippets for the platforms that failure actually occurs on. Coverage is listed per
-    template, because not every failure happens on every platform:</p>
+    <h2>The fixes ship with it</h2>
+    <p>Six drop-in remediation templates are in the repo, free, alongside this page. Each opens with
+    the exact failure it prevents, then working snippets for the platforms that failure actually
+    occurs on. Coverage is per template, because not every failure happens on every platform:</p>
     <ul class="tlist">
       <li><s>01</s>heartbeat-guard.md <em>bash + PowerShell</em></li>
       <li><s>02</s>produce-or-alarm.md <em>design rule, no snippet</em></li>
@@ -251,9 +254,9 @@ ls -la /etc/cron.d/</code>
       <li><s>05</s>artifact-proof.md <em>bash + PowerShell</em></li>
       <li><s>06</s>catch-up-safe-dispatch.md <em>PowerShell + Task XML</em></li>
     </ul>
-    <p class="cta" style="margin-top:16px">Plus three broken fixtures with the expected checker output,
-    and a runtime verification checklist for the things static text can never see.</p>
-    <p class="cta"><b>Get the pack — $9</b> · download button on this page</p>
+    <p class="cta" style="margin-top:16px">Plus four fixtures, and a runtime verification checklist
+    for the things static text can never see.</p>
+    <p class="cta"><b>Read the known limits first</b> &middot; this reports signals, not verdicts</p>
   </div>
 </div>
 
@@ -303,7 +306,7 @@ const C=[
  fail:"cadence is decided by a weekday name. Under catch-up dispatch a missed Monday fires on Tuesday, the gate closes, and the routine becomes structurally unable to run while reporting success every time.",
  pass:"cadence is measured as elapsed time, which survives a deferred run.",
  unk:"no weekday test and no elapsed-time gate found. If cadence is enforced anywhere, confirm it is not a day name.",
- fix:"Gate on hours since the newest real output, set slightly below the nominal cadence.",tpl:"elapsed-time-gate.md"},
+ fix:"Gate on hours since the newest real output, set slightly below the nominal cadence.",tpl:"elapsed-time-gate.md",hist:true},
 
 {n:2,g:0,name:"lastRunAt gate",applies:["prompt","script"],
  defect:[/\b(lastrunat|last_run_at|lastruntime|last_run|lastexecuted|last_dispatch)\b/i],
@@ -473,6 +476,38 @@ function allNegated(txt,tokRe){
   return seen;
 }
 
+/* --- historical-description guard -------------------------------------
+   A changelog that quotes the defect it REMOVED contains the defect's
+   words but not the defect. Clear it only when BOTH hold for EVERY match:
+   a historical/prohibition cue to the left, AND the match sits inside a
+   quoted or code span on its own line. Requiring both is deliberate --
+   a live gate with a stray "previously" nearby must still FAIL.        */
+const HISTCUE=/\b(previous(ly)?|prior|former(ly)?|old(er)?|was|were|used\s+to|replaced?|supersed(ed|es)|deprecated|legacy|no\s+longer|changed|removed?|retired?|dropped)\b[^.;!?]{0,70}$/i;
+function inQuotedSpan(txt,st,en){
+  const ls=txt.lastIndexOf("\n",st)+1;
+  let le=txt.indexOf("\n",en); if(le<0) le=txt.length;
+  const line=txt.slice(ls,le), rs=st-ls, re2=en-ls;
+  const D=[/"[^"\n]*"/g,/'[^'\n]*'/g,/`[^`\n]*`/g,/\u201C[^\u201D\n]*\u201D/g];
+  for(const d of D){ d.lastIndex=0; let m;
+    while((m=d.exec(line))!==null){ if(m.index<=rs && m.index+m[0].length>=re2) return true; }
+  }
+  return false;
+}
+function allDescribed(txt,res){
+  let seen=false;
+  for(const r of res){
+    const g=new RegExp(r.source,"gi"); let m;
+    while((m=g.exec(txt))!==null){
+      if(m[0].length===0){g.lastIndex++;continue;}
+      seen=true;
+      const left=txt.slice(Math.max(0,m.index-70),m.index);
+      if(!(NEGCUE.test(left)||HISTCUE.test(left))) return false;
+      if(!inQuotedSpan(txt,m.index,m.index+m[0].length)) return false;
+    }
+  }
+  return seen;
+}
+
 /* ============================ engine ============================ */
 function evaluate(txt,kind){
   return C.map(c=>{
@@ -483,10 +518,11 @@ function evaluate(txt,kind){
 
     let d=c.defect&&c.defect.length?hit(txt,c.defect):null;
     if(d&&c.negtok&&allNegated(txt,c.negtok)) d=null;
+    if(d&&c.hist&&allDescribed(txt,c.defect)) d=null;
     const g=c.guard&&c.guard.length?hit(txt,c.guard):null;
 
-    if(d&&g) return{c,st:"FAIL",why:"guard language is present (<code>"+esc(g)+"</code>) but so is the defect itself (<code>"+esc(d)+"</code>). The stated rule is not what the routine does — a description of the fix is not the fix."};
-    if(d)    return{c,st:"FAIL",why:"matched <code>"+esc(d)+"</code> — "+c.fail};
+    if(d&&g) return{c,st:"FAIL",why:"both phrasings are present in this text: a guard (<code>"+esc(g)+"</code>) and the defect wording (<code>"+esc(d)+"</code>). <b>This tool cannot tell which one is operative</b> — whether the defect is a live instruction, a quoted counterexample, or a rule forbidding it. Read both spans and decide. A document that <i>teaches</i> this failure mode will light up here, correctly."};
+    if(d)    return{c,st:"FAIL",why:"defect wording found: <code>"+esc(d)+"</code>. If it is operative, then — "+c.fail+" <i>If it is a quotation, a heading or an example, this signal is noise; the tool cannot tell the difference.</i>"};
     if(g)    return{c,st:"PASS",why:"matched <code>"+esc(g)+"</code> — "+c.pass+" This is a text match, not a verification that the code does it."};
     return{c,st:"UNKNOWN",why:c.unk};
   });
@@ -531,6 +567,7 @@ function render(){
   if(kind==="empty"){ out.innerHTML=""; trace([]);
     ["mApp","mFail","mUnk","mPass","mNa"].forEach(i=>document.getElementById(i).textContent="—"); return; }
 
+  const LABEL={FAIL:"DEFECT SIGNAL",PASS:"GUARD SIGNAL",UNKNOWN:"NO SIGNAL",NA:"NOT VISIBLE"};
   const rows=evaluate(txt,kind);
   const n=s=>rows.filter(r=>r.st===s).length;
   document.getElementById("mApp").textContent=rows.length-n("NA");
@@ -547,7 +584,7 @@ function render(){
     rs.forEach(r=>{h+='<i class="'+({FAIL:"f",UNKNOWN:"u",PASS:"p",NA:"n"}[r.st])+'"></i>';});
     h+='</div>';
     rs.forEach(r=>{
-      h+='<div class="res '+r.st+'"><div class="st '+r.st+'">'+(r.st==="NA"?"NOT VISIBLE":r.st)+'</div><div>'+
+      h+='<div class="res '+r.st+'"><div class="st '+r.st+'">'+LABEL[r.st]+'</div><div>'+
          '<p class="rname"><span class="rnum">'+String(r.c.n).padStart(2,"0")+'</span>'+r.c.name+'</p>'+
          '<p class="why">'+r.why+'</p>';
       if(r.st==="FAIL"||r.st==="UNKNOWN")

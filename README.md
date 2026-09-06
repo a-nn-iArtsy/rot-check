@@ -1,6 +1,6 @@
 # Rot Check
 
-**Find the scheduled agent that quietly stopped working.**
+**14 ways an unattended routine dies quietly — and how to check for them.**
 
 Your job says it ran. Nothing checked whether it *did* anything.
 
@@ -8,8 +8,9 @@ That is the whole category this covers. Not crashes — crashes are loud and you
 handle those. This is the routine that fires on time, exits clean, writes a timestamp,
 and has been doing nothing for nine days.
 
-**[Try it in your browser →](https://a-nn-iartsy.github.io/rot-check/)** · no install, no
-account, no upload. Paste a cron line, a Task Scheduler XML export, a systemd unit, an
+**[Try the checker →](https://a-nn-iartsy.github.io/rot-check/)** · no install, no account,
+no upload. It reports **signals, not verdicts** — see *Known limits* below, which you should
+read before trusting anything it says. Paste a cron line, a Task Scheduler XML export, a systemd unit, an
 agent prompt, or the script your scheduler calls.
 
 Everything runs locally in the page. Nothing is sent anywhere — open DevTools and watch
@@ -132,17 +133,17 @@ Paste your worst one first: the routine you would be most upset to lose silently
 
 ## What this is, exactly
 
-**A lint over text, not a proof of reliability.** Whether a token is still valid, whether
+**Signals over text, not a verdict, and not a proof of reliability.** Whether a token is still valid, whether
 the host woke up, whether a file was actually written — those are runtime properties, and
 no amount of reading a config reveals them.
 
 So it reports four states, deliberately:
 
-| state | meaning |
+| signal | meaning |
 |---|---|
-| `FAIL` | the defect is present in the text |
-| `PASS` | guard language is present — a text match, **not** a verification |
-| `UNKNOWN` | this input type could carry the evidence; none was found |
+| `DEFECT SIGNAL` | wording associated with this failure appears somewhere in the text |
+| `GUARD SIGNAL` | wording associated with the fix appears — a phrase match, **not** a verification |
+| `NO SIGNAL` | this input type could carry the evidence; none was found |
 | `NOT VISIBLE` | this input type structurally *cannot* answer this check |
 
 **`NOT VISIBLE` is excluded from the score entirely** rather than counted as a pass. A cron
@@ -161,7 +162,7 @@ product; the regexes are only how they get surfaced.**
 | `broken-cron.txt` | a cron line with a host-asleep defect and an unguarded headless call |
 | `broken-task.xml` | a Task Scheduler export with the classic `ExecutionTimeLimit` killer |
 | `broken-skill.md` | an agent prompt with a weekday gate and a self-reporting proof |
-| `good-routine.md` | **nothing wrong with it.** Any `FAIL` here is a checker bug — please open an issue |
+| `good-routine.md` | **nothing wrong with it.** Any defect signal here is a checker bug — please open an issue |
 
 That last one matters. A linter's worst failure mode is reddening correct config, because
 users read a false alarm as a finding and never report it.
@@ -181,13 +182,10 @@ was themselves.
 
 ---
 
-## The fixes — $9
+## The fixes — included, free
 
-The checker above is free and always will be. What it doesn't ship is the remediation work.
-
-The paid pack is this page offline plus **six drop-in fix templates**, each opening with the
-exact failure it prevents, then working snippets for the platforms that failure actually
-occurs on:
+`templates/` has six drop-in remediation files, each opening with the exact failure it prevents,
+then working snippets for the platforms that failure actually occurs on:
 
 | template | covers | platforms |
 |---|---|---|
@@ -198,24 +196,43 @@ occurs on:
 | `artifact-proof.md` | 6, 7, 14 | bash + PowerShell |
 | `catch-up-safe-dispatch.md` | 10 | PowerShell + Task Scheduler XML |
 
-Coverage is listed per template because not every failure happens on every platform. The
-Task Scheduler XML was import-tested with `schtasks /create`, read back with
-`Get-ScheduledTask`, and confirmed setting by setting.
+Coverage is listed per template because not every failure happens on every platform. The Task
+Scheduler XML was import-tested with `schtasks /create`, read back with `Get-ScheduledTask`, and
+confirmed setting by setting, then deleted.
 
-Plus `EXPECTED-OUTPUT.md` — what the checker should say about each fixture, so you can verify
-your copy — and `RUNTIME-VERIFICATION.md`, eight tests for the things static text can never
-see. **That last file is the part that actually proves anything.**
+---
 
-<!-- TODO: replace this block with the Gumroad link once the listing is live -->
-**The pack is $9.** The listing goes up shortly — watch this repo, or open an issue
-and I'll point you at it.
+## Known limits
 
-If it finds nothing useful in your setup, I refund it. No argument, no form.
+Written down because a tool about silent failure should not have any of its own.
+
+**1 · Mention vs use is unsolved.** The checker matches wording across the whole document. It
+cannot tell a live instruction from a quoted counterexample or a rule forbidding it. **The six
+templates in this repo trigger defect signals** — they have to, because a remediation doc quotes
+the anti-pattern in order to teach it. That is the tool working as built, and the reason it
+reports signals instead of verdicts.
+
+**2 · Three checks can never report a defect.** Checks 7, 8 and 9 have no defect patterns at all.
+They can only report a guard signal or no signal. Fourteen modes are catalogued; eleven can
+currently surface a defect signal.
+
+**3 · Seven of fourteen checks have no test case.** Checks 4, 5, 7, 8, 9, 12 and 13 have nothing
+in `fixtures/` that exercises their defect path. They are unproven, not proven-good.
+
+**4 · Input type is guessed from the whole file, first match wins.** A document containing a
+`<Task>` block is treated as Task Scheduler XML in its entirety, and up to 13 of 14 checks go
+`NOT VISIBLE`. **A clean result can mean "not scored", not "not broken."** Watch the detected type.
+
+**5 · There is no held-out corpus.** Every fixture was written by the same person who wrote the
+patterns. Passing them proves in-sample consistency and nothing about a stranger's config.
+
+These came out of a blind three-way review — two other models audited the engine independently,
+without seeing each other or the author's diagnosis, and the findings above are theirs as much as
+mine. Issues and counterexamples very welcome; a file that produces a wrong signal is the single
+most useful thing you can send.
 
 ---
 
 ## Licence
 
-The checker and these docs: MIT (see `LICENSE`). Use them anywhere, commercial or not.
-
-The one ask: don't redistribute the paid pack as a product.
+MIT (see `LICENSE`). Checker, templates and docs. Use them anywhere, commercial or not.
