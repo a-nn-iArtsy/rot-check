@@ -34,14 +34,29 @@ reporting success every time.
 Cadence reads a field the scheduler writes. That proves the run was **dispatched**, not
 that it did any work — a run that started and died still stamps it.
 
-> *Seen in the wild, and you can check it yourself in ten seconds.* The GitHub API reports
-> `pushed_at: 2025-08-28` for a well-known 13k-star repo, while the last commit on its
-> default branch is `2022-10-08` — the newer timestamp came from a push to an unmerged
-> branch. Nothing is wrong with the repo or its maintainer; `pushed_at` simply answers a
-> different question than the one people read it as. **That is this failure mode exactly:
-> the field the system writes is not the field you meant.** Verify with
-> `gh api repos/OWNER/REPO --jq .pushed_at` against
-> `gh api repos/OWNER/REPO/commits/HEAD --jq .commit.committer.date`.
+> *Seen in the wild. You can check it yourself in ten seconds.*
+>
+> ```
+> AUTOMATIC1111/stable-diffusion-webui   164,836 stars, not archived
+>   pushed_at            2026-03-02
+>   master last commit   2024-07-27      gap: 582 days
+> ```
+>
+> One of the most-used tools in its category reads as recently active, and its default
+> branch has not received a commit in nineteen months. **Nothing is wrong with the project
+> or its maintainers** — `pushed_at` bumps on pushes to *any* branch, so it answers a
+> different question than the one people read it as. That is this failure mode exactly:
+> **the field the system writes is not the field you meant.**
+>
+> Check any repo:
+> ```bash
+> gh api repos/OWNER/REPO --jq .pushed_at
+> gh api repos/OWNER/REPO/commits/HEAD --jq .commit.committer.date
+> ```
+>
+> Measured 2026-09-06 across the 300 most-starred non-archived repos: **3.0%** had a
+> `pushed_at` at least 180 days newer than their last default-branch commit, **1.7%** at
+> least a year. Uncommon — and the two timestamps are still not the same claim.
 
 **3 · Heartbeat written last**
 The heartbeat is written after the work. A run that dies mid-work leaves no trace it ever
