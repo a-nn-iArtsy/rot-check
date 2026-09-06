@@ -34,6 +34,15 @@ reporting success every time.
 Cadence reads a field the scheduler writes. That proves the run was **dispatched**, not
 that it did any work — a run that started and died still stamps it.
 
+> *Seen in the wild, and you can check it yourself in ten seconds.* The GitHub API reports
+> `pushed_at: 2025-08-28` for a well-known 13k-star repo, while the last commit on its
+> default branch is `2022-10-08` — the newer timestamp came from a push to an unmerged
+> branch. Nothing is wrong with the repo or its maintainer; `pushed_at` simply answers a
+> different question than the one people read it as. **That is this failure mode exactly:
+> the field the system writes is not the field you meant.** Verify with
+> `gh api repos/OWNER/REPO --jq .pushed_at` against
+> `gh api repos/OWNER/REPO/commits/HEAD --jq .commit.committer.date`.
+
 **3 · Heartbeat written last**
 The heartbeat is written after the work. A run that dies mid-work leaves no trace it ever
 fired, so a mid-run death is indistinguishable from a run that never dispatched.
